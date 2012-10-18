@@ -3,7 +3,7 @@
 Plugin Name: WP Tiles
 Plugin URI: http://trenvo.com
 Description: WP Tiles
-Version: 0.1
+Version: 0.1.3
 Author: Mike Martel
 Author URI: http://trenvo.com
  */
@@ -17,7 +17,7 @@ if (!defined('ABSPATH'))
  *
  * @since 0.1
  */
-define('WPTILES_VERSIE', '0.1');
+define('WPTILES_VERSION', '0.1');
 
 /**
  * PATHs and URLs
@@ -106,35 +106,40 @@ if (!class_exists('WP_Tiles')) :
             $this->show_tiles ( $atts );
         }
 
-        protected function shotcode_atts_rec ( $defaults, $atts ) {
-            foreach ( $atts as $k => &$att ) {
-                if ( is_array ( $att ) ) {
-                    $att = $this->extr_atts ( $att, $defaults[$k] );
-                } else {
-                    parse_str( html_entity_decode( $atts['posts_query'] ), $posts_query);
-                    $att = shortcode_atts( $defaults[$k], $posts_query );
+        protected function shortcode_atts_rec ( $options, $atts ) {
+            if ( is_array ( $atts ) ) {
+                foreach ( $atts as $k => &$att ) {
+                    if ( is_array ( $att ) ) {
+                        $att = $this->shortcode_atts_rec ( $att, $options[$k] );
+                    } elseif ( strpos ( $att, '=' ) ) {
+                        parse_str( html_entity_decode( $att ), $atts_parsed );
+                        if ( ! empty ( $atts_parsed ) ) $att = $atts_parsed;
+                        if ( is_array ( $options[$k] ) )
+                            $att = shortcode_atts ($options[$k] , $att);
+                    }
                 }
             }
-            $atts = shortcode_atts( $defaults, $atts );
-            return $atts;
+            return shortcode_atts ( $options, $atts );
 
         }
 
         public function show_tiles ( $atts ) {
 
             /**
-             * Options
+             * Options and attributes
              */
-            $defaults = $this->options;
-
-            $atts = $this->shotcode_atts_rec ( $defaults, $atts );
+            $atts = $this->shortcode_atts_rec ( $this->options, $atts );
 
             $posts = get_posts( $atts['posts_query'] );
             if ( empty ( $posts ) ) return;
 
             $data = $this->extract_data( $posts, $atts['colors'] );
 
-            $templates = ( ! empty ( $atts['template'] ) ) ? array ( $atts['template'] ) : $atts['templates']['templates'];
+            if ( ! empty ( $atts['template'] ) && ! empty ( $atts['templates']['templates'][ $atts['template'] ] ) ) {
+                $templates = array ( $atts['templates']['templates'][ $atts['template'] ] );
+            } else {
+                $templates = $atts['templates']['templates'];
+            }
             foreach ( $templates as &$template ) {
                 $template = explode ( "\n", $template );
             }
