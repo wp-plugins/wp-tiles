@@ -3,7 +3,7 @@
 Plugin Name: WP Tiles
 Plugin URI: http://trenvo.com/wp-tiles/
 Description: Add fully customizable dynamic tiles to your WordPress posts and pages.
-Version: 0.2.1
+Version: 0.2.2
 Author: Mike Martel
 Author URI: http://trenvo.com
  */
@@ -17,7 +17,7 @@ if (!defined('ABSPATH'))
  *
  * @since 0.1
  */
-define('WPTILES_VERSION', '0.2.1');
+define('WPTILES_VERSION', '0.2.2');
 
 /**
  * PATHs and URLs
@@ -133,7 +133,7 @@ if (!class_exists('WP_Tiles')) :
             $posts = get_posts( $atts['posts_query'] );
             if ( empty ( $posts ) ) return;
 
-            $data = $this->extract_data( $posts, $atts['colors'] );
+            $data = $this->extract_data( $posts, $atts['display'], $atts['colors'] );
 
             if ( ! empty ( $atts['template'] ) && ! empty ( $atts['templates']['templates'][ $atts['template'] ] ) ) {
                 $templates = array ( $atts['templates']['templates'][ $atts['template'] ] );
@@ -160,7 +160,7 @@ if (!class_exists('WP_Tiles')) :
             /**
              * We are a go, so enqueue styles and scripts
              */
-            $this->enqueue_scripts ();
+            $this->enqueue_scripts();
             $this->enqueue_styles();
 
             $show_selector = ( ! empty ( $atts['show_selector'] ) ) ? $atts['show_selector'] : $atts['templates']['show_selector'];
@@ -201,8 +201,8 @@ if (!class_exists('WP_Tiles')) :
         protected function enqueue_scripts () {
             if (! is_admin()) {
                 wp_enqueue_script("jquery");
-                wp_enqueue_script( 'tilesjs', WPTILES_INC_URL . '/js/tiles.js', array ( "jquery" ), false, true );
-                wp_enqueue_script( 'wp-tiles', WPTILES_INC_URL . '/js/wp-tiles.js',  array ( "tilesjs" ), false, true );
+                wp_enqueue_script( 'tilesjs', WPTILES_INC_URL . '/js/tiles.js', array ( "jquery" ),  "2012-08-08", true );
+                wp_enqueue_script( 'wp-tiles', WPTILES_INC_URL . '/js/wp-tiles.js',  array ( "tilesjs" ), WPTILES_VERSION, true );
             }
         }
 
@@ -213,7 +213,8 @@ if (!class_exists('WP_Tiles')) :
             $this->data[$wptiles_id] = array (
                 "id" => $wptiles_id,
                 "rowTemplates" => $rowTemplates,
-                "posts" => $data
+                "posts" => $data,
+                "display" => $display_options,
             );
         }
 
@@ -246,10 +247,10 @@ if (!class_exists('WP_Tiles')) :
             } else {
                 $located = WPTILES_INC_URL . '/css/wp-tiles.css';
             }
-            wp_enqueue_style( 'wp-tiles', $located );
+            wp_enqueue_style( 'wp-tiles', $located, false, WPTILES_VERSION );
         }
 
-        protected function extract_data( $posts, $colors ) {
+        protected function extract_data( $posts, $display_options, $colors ) {
             $data = array();
 
             if ( is_array ( $colors ) ) $colors = $colors['colors'];
@@ -259,33 +260,63 @@ if (!class_exists('WP_Tiles')) :
             }
             $colors = apply_filters ( "wp-tiles-colors", array_filter ( $colors ) );
 
+            $display_options = apply_filters ( "wp-tiles-display_options", $display_options );
+
+            $hideByline = ( 'show' == $display_options['text'] ) ? false : true;
+            $hideByline = apply_filters ( 'wp-tiles-hide-byline', $hideByline, $post->ID, $post );
+
             foreach ( $posts as $post ) {
+                switch ( $display_options['byline'] ) {
+                    case 'nothing' :
+                        $byline = '';
+                        break;
+                    case 'excerpt' :
+                        $byline = $this->get_the_excerpt( $post->post_content, $post->post_excerpt );
+                        break;
+                    case 'cats' :
+                    default :
+                        $byline = wp_get_post_categories( $post->ID, array ( "fields" => "names" ) );
+                        break;
+                }
+
                 $data[] = array (
                     "id"        => $post->ID,
                     "title"     => $post->post_title,
                     "url"       => get_permalink( $post->ID ),
-                    "category"  => wp_get_post_categories( $post->ID, array ( "fields" => "names" ) ),
+                    "byline"    => $byline,
                     "img"       => $this->get_first_image ( $post ),
                     "color"     => $colors[ array_rand( $colors ) ],
-                    "hideByline"=> apply_filters ( 'wp-tiles-hide-byline', false, $post->ID, $post )
+                    "hideByline"=> $hideByline
                 );
+                if ( true ) {
+
+                }
+
             }
 
             return apply_filters ( 'wp-tiles-data', $data, $posts, $colors, $this );
         }
 
-        /**
-         * Not used anymore..?
-         */
-        protected function get_the_excerpt ( $post ) {
-            if ( $this->has_excerpt( $post ) )
-                return $post->excerpt;
+        function get_the_excerpt($text, $excerpt) {
+            if ($excerpt) return $excerpt;
 
+            $text = strip_shortcodes( $text );
+
+            $text = apply_filters('the_content', $text);
+            $text = str_replace(']]>', ']]&gt;', $text);
+            $text = strip_tags($text);
             $excerpt_length = apply_filters('excerpt_length', 55);
             $excerpt_more = apply_filters('excerpt_more', ' ' . '[...]');
-            $excerpt = wp_trim_words( strip_tags ( $post->post_content ), $excerpt_length, $excerpt_more );
+            $words = preg_split("/[\n\r\t ]+/", $text, $excerpt_length + 1, PREG_SPLIT_NO_EMPTY);
+            if ( count($words) > $excerpt_length ) {
+                    array_pop($words);
+                    $text = implode(' ', $words);
+                    $text = $text . $excerpt_more;
+            } else {
+                    $text = implode(' ', $words);
+            }
 
-            return apply_filters('wp_trim_excerpt', $excerpt, '' );
+            return apply_filters('wp_trim_excerpt', $text, $raw_excerpt);
         }
 
         protected function has_excerpt ( $post ) {
