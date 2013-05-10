@@ -3,7 +3,7 @@
 Plugin Name: WP Tiles
 Plugin URI: http://trenvo.com/wp-tiles/
 Description: Add fully customizable dynamic tiles to your WordPress posts and pages.
-Version: 0.3.5
+Version: 0.4.1
 Author: Mike Martel
 Author URI: http://trenvo.com
  */
@@ -17,7 +17,7 @@ if (!defined('ABSPATH'))
  *
  * @since 0.1
  */
-define('WPTILES_VERSION', '0.3.5');
+define('WPTILES_VERSION', '0.4.1');
 
 /**
  * PATHs and URLs
@@ -35,7 +35,8 @@ define('WPTILES_INC_URL', WPTILES_URL . '_inc/');
  *
  * @since 0.1
  */
-require_once ( WPTILES_DIR . '/wp-tiles-admin.php' );
+if ( is_admin() )
+    require_once ( WPTILES_DIR . '/wp-tiles-admin.php' );
 
 if (!class_exists('WP_Tiles')) :
 
@@ -88,7 +89,7 @@ if (!class_exists('WP_Tiles')) :
             require_once ( WPTILES_DIR . '/wp-tiles-defaults.php');
 
             $wptiles_options = get_option( 'wp-tiles-options' );
-            $this->options = shortcode_atts( $wptiles_defaults, $wptiles_options);
+            $this->options = $this->shortcode_atts_rec( $wptiles_defaults, $wptiles_options);
 
             add_shortcode( 'wp-tiles', array ( &$this, 'shortcode' ) );
         }
@@ -116,9 +117,9 @@ if (!class_exists('WP_Tiles')) :
             if ( is_array ( $atts ) ) {
                 foreach ( $atts as $k => &$att ) {
                     if ( is_array ( $att ) ) {
-                        $att = $this->shortcode_atts_rec ( $att, $options[$k] );
+                        $att = $this->shortcode_atts_rec ( $options[$k], $att );
                     } elseif ( strpos ( $att, '=' ) ) {
-                        parse_str( html_entity_decode( $att ), $atts_parsed );
+                        wp_parse_str( html_entity_decode( $att ), $atts_parsed );
                         if ( ! empty ( $atts_parsed ) ) $att = $atts_parsed;
                         if ( is_array ( $options[$k] ) )
                             $att = shortcode_atts ($options[$k] , $att);
@@ -129,14 +130,20 @@ if (!class_exists('WP_Tiles')) :
 
         }
 
-        public function show_tiles ( $atts ) {
+        public function show_tiles ( $atts_arg ) {
 
             /**
              * Options and attributes
              */
-            $atts = $this->shortcode_atts_rec ( $this->options, $atts );
+            $atts = $this->shortcode_atts_rec ( $this->options, $atts_arg );
 
-            $posts = get_posts( $atts['posts_query'] );
+            if ( empty ( $atts_arg['posts_query'] ) && ! is_singular() ) {
+                global $wp_query;
+                $posts = $wp_query->get_posts();
+            } else {
+                $posts = get_posts( $atts['posts_query'] );
+            }
+
             if ( empty ( $posts ) ) return;
 
             $data = $this->extract_data( $posts, $atts['display'], $atts['colors'] );
@@ -192,6 +199,14 @@ if (!class_exists('WP_Tiles')) :
                     <?php endforeach; ?>
 
                 </ul>
+
+                <?php if ( $wp_query->max_num_pages > 1 ) : ?>
+                    <nav id="<?php echo $wptiles_id; ?>-pagination" class="navigation" role="navigation">
+                        <h3 class="assistive-text"><?php _e( 'Post navigation', 'twentytwelve' ); ?></h3>
+                        <div class="nav-previous alignleft"><?php next_posts_link( __( '<span class="meta-nav">&larr;</span> Older posts', 'twentytwelve' ) ); ?></div>
+                        <div class="nav-next alignright"><?php previous_posts_link( __( 'Newer posts <span class="meta-nav">&rarr;</span>', 'twentytwelve' ) ); ?></div>
+                    </nav><!-- #<?php echo $html_id; ?> .navigation -->
+                <?php endif; ?>
 
             </div>
 
@@ -405,13 +420,22 @@ if (!class_exists('WP_Tiles')) :
         $tiles = WP_Tiles::init();
 
         // If category archive, show
-        if ( empty ( $atts ) && ( is_category() || is_single() ) ) {
+        if ( is_single() ) {
             $categories = get_the_category();
             $cats = array();
             foreach ( $categories as $category ) {
                 $cats[] = $category->term_id;
             }
-            $atts['posts_query']['cat'] = implode ( ', ', $cats );
+            /**
+             * Allow $atts to be just the post_query as a string or object
+             */
+            if ( ! is_array ( $atts ) ) {
+                $posts_query = array();
+                wp_parse_str ( $atts, $posts_query );
+                $atts = array ( 'posts_query' => $posts_query );
+            }
+
+            $atts['posts_query']['category'] = implode ( ', ', $cats );
 
         }
 
