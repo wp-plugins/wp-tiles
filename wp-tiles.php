@@ -3,7 +3,7 @@
 Plugin Name: WP Tiles
 Plugin URI: http://trenvo.com/wp-tiles/
 Description: Add fully customizable dynamic tiles to your WordPress posts and pages.
-Version: 0.4.3
+Version: 0.4.4
 Author: Mike Martel
 Author URI: http://trenvo.com
  */
@@ -17,7 +17,7 @@ if (!defined('ABSPATH'))
  *
  * @since 0.1
  */
-define('WPTILES_VERSION', '0.4.3');
+define('WPTILES_VERSION', '0.4.4');
 
 /**
  * PATHs and URLs
@@ -115,10 +115,26 @@ if (!class_exists('WP_Tiles')) :
 
         protected function shortcode_atts_rec ( $options, $atts ) {
             if ( is_array ( $atts ) ) {
+                // Don't continue if the option itself is an array
+                if ( isset ( $options['option_is_array'] ) ) {
+                    $option_is_array = $options['option_is_array'];
+                    unset ( $options['option_is_array'] );
+
+                    if ( $option_is_array ) {
+                        if ( 'inclusive' == $option_is_array )
+                            $atts = array_merge ( $atts, $options );
+
+                        return $atts;
+                    }
+                }
+
                 foreach ( $atts as $k => &$att ) {
-                    if ( is_array ( $att ) ) {
+                    if ( is_array ( $att )
+                            && array_keys( $atts ) !== range( 0, count( $atts ) - 1 ) // Make sure array is associative
+                        ) {
                         $att = $this->shortcode_atts_rec ( $options[$k], $att );
                     } elseif ( strpos ( $att, '=' ) ) {
+                        $atts_parsed = array();
                         wp_parse_str( html_entity_decode( $att ), $atts_parsed );
                         if ( ! empty ( $atts_parsed ) ) $att = $atts_parsed;
                         if ( is_array ( $options[$k] ) )
