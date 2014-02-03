@@ -5,7 +5,7 @@ Author URI: http://trenvopress.com/
 Tags: tiles, shortcode
 Requires at least: 3.4.2
 Tested up to: 3.5.2
-Stable tag: 0.5.8
+Stable tag: 0.5.9
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -215,6 +215,10 @@ WP Tiles automatically adds the class slug to your tiles, so you can add your ow
 1. Example of tile templates (plain)
 
 == Changelog ==
+
+= 0.5.9 =
+
+* Added wp-tiles-byline filter
 
 = 0.5.8 =
 
