@@ -3,7 +3,7 @@
   Plugin Name: WP Tiles
   Plugin URI: http://trenvopress.com/
   Description: Add fully customizable dynamic tiles to your WordPress posts and pages.
-  Version: 0.5.9
+  Version: 1.0-beta1
   Author: Mike Martel
   Author URI: http://trenvopress.com
  */
@@ -17,29 +17,61 @@ if ( !defined( 'ABSPATH' ) )
  *
  * @since 0.1
  */
-define( 'WPTILES_VERSION', '0.5.9' );
+define( 'WP_TILES_VERSION', '1.0-beta1' );
 
 /**
  * PATHs and URLs
  *
  * @since 0.1
  */
-define( 'WPTILES_DIR', plugin_dir_path( __FILE__ ) );
-define( 'WPTILES_URL', plugin_dir_url( __FILE__ ) );
-define( 'WPTILES_TEMPLATES_DIR', WPTILES_DIR . 'templates/' );
-define( 'WPTILES_TEMPLATES_URL', WPTILES_URL . 'templates/' );
-define( 'WPTILES_INC_URL', WPTILES_URL . '_inc/' );
+
+define( 'WP_TILES_DIR', plugin_dir_path( __FILE__ ) );
+define( 'WP_TILES_URL', plugin_dir_url( __FILE__ ) );
+define( 'WP_TILES_TEMPLATES_DIR', WP_TILES_DIR . 'templates/' );
+define( 'WP_TILES_TEMPLATES_URL', WP_TILES_URL . 'templates/' );
+define( 'WP_TILES_ASSETS_URL', WP_TILES_URL . 'assets/' );
 
 /**
  * Requires and includes
  *
- * @since 0.1
+ * @since 1.0
  */
-require_once ( WPTILES_DIR . '/wp-tiles.class.php' );
-if ( is_admin() )
-    require_once ( WPTILES_DIR . '/wp-tiles-admin.php' );
+if ( !defined( 'VP_VERSION' ) )
+    require plugin_dir_path( __FILE__ ) .'vafpress-framework/bootstrap.php';
+
+require WP_TILES_DIR . 'vendor/autoload.php';
+
+register_activation_hook( __FILE__, array( 'WPTiles\WPTiles', 'on_plugin_activation' ) );
+
+if ( get_option( 'wp-tiles-options' ) ) {
+    WPTiles\Legacy::convert_option();
+}
+
+/**
+ * Get the one and only true instance of WP Tiles
+ *
+ * @return WPTiles\WPTiles
+ * @since 0.4.2
+ */
+function wp_tiles() {
+    return \WPTiles\WPTiles::get_instance();
+}
+
+// Initialize
+wp_tiles();
 
 add_action( 'plugins_loaded', 'wptiles_load_pluggables' );
 function wptiles_load_pluggables() {
-    require_once( WPTILES_DIR . '/wp-tiles-pluggables.php' );
+    require_once( WP_TILES_DIR . '/wp-tiles-pluggables.php' );
 }
+
+function wp_tiles_preview_tile() {
+    return WPTiles\Admin\Admin::preview_tile();
+}
+
+// Add settings link
+$plugin = plugin_basename( __FILE__ );
+add_filter( "plugin_action_links_$plugin", function( $links ){
+    $links[] = '<a href="admin.php?page=wp-tiles">' . __( 'Settings', 'wp-tiles' ) . '</a>';
+    return $links;
+} );
