@@ -31,11 +31,10 @@ class Shortcode
         $defaults = wp_tiles()->options->get_options();
 
         $atts = shortcode_atts( array(
-            'grids' => $defaults['grids'],
-            'grid'  => false,
-
+            'grids'  => $defaults['grids'],
+            'grid'   => false, // Pass grid manually
             'colors' => $defaults['colors'],
-            'color' => false,
+
             'background_opacity' => $defaults['background_opacity'],
             'grid_selector_color' => $defaults['grid_selector_color'],
 
@@ -52,6 +51,9 @@ class Shortcode
             'byline_align'    => $defaults['byline_align'],
             'byline_effect'   => $defaults['byline_effect'],
             'image_effect'    => $defaults['image_effect'],
+
+            'text_color'       => $defaults['text_color'],
+            'image_text_color' => $defaults['image_text_color'],
 
             'link'            => $defaults['link'],
             'link_new_window' => $defaults['link_new_window'],
@@ -72,20 +74,38 @@ class Shortcode
 
             'pagination'       => $defaults['pagination'],
 
+            'extra_classes'    => $defaults['extra_classes'],
+            'extra_classes_grid_selector'
+                               => $defaults['extra_classes_grid_selector'],
+
             'full_width'       => $defaults['full_width']
 
         ), $original_atts );
 
-        $grid_names = self::_get_options_array( $atts['grids'],  $atts['grid'] );
-        //$grids = wp_tiles()->get_grids( $grid_names );
+        if ( $atts['grid'] ) {
+            $atts['grids'] = array(
+                'Custom' => wp_tiles()->format_grid( $atts['grid'] )
+            );
+        }
+
+        // Maybe convert full grid strings into grids so they are not interpreted as names
+        $is_grid_string = function( $string ) {
+            return is_string( $string ) && ( strpos( $string, '|' ) !== 0 || strpos( $string, "\n" ) !== 0 );
+        };
+
+        if ( $atts['small_screen_grid'] && $is_grid_string( $atts['small_screen_grid'] ) ) {
+            $atts['small_screen_grid'] = wp_tiles()->format_grid( $atts['small_screen_grid'] );
+        }
+
+        $grid_names = self::_get_options_array( $atts['grids'] );
 
         $options = array(
-            'grids' => $grid_names, // Will be converted into grid templates in render_tiles
+            'grids' => $grid_names, // Will be converted into grid templates in get_tiles
 
             'small_screen_grid' => '',
             'breakpoint' => (int) $atts['breakpoint'],
 
-            'colors' => self::_get_colors( $atts['colors'], $atts['color'] ),
+            'colors' => self::_get_colors( $atts['colors'] ),
             'background_opacity' => (float) $atts['background_opacity'],
             'grid_selector_color' => $atts['grid_selector_color'],
 
@@ -100,6 +120,9 @@ class Shortcode
             'byline_effect'   => $atts['byline_effect'],
             'image_effect'    => $atts['image_effect'],
 
+            'text_color'       => $atts['text_color'],
+            'image_text_color' => $atts['image_text_color'],
+
             'link'            => $atts['link'],
             'link_new_window' => $atts['link_new_window'],
 
@@ -111,6 +134,11 @@ class Shortcode
             'image_size'   => $atts['image_size'],
 
             'padding' => (int) $atts['padding'],
+
+            'extra_classes'    => self::_get_options_array( $atts['extra_classes'] ),
+
+            'extra_classes_grid_selector'
+                               => self::_get_options_array( $atts['extra_classes_grid_selector'] ),
 
             'animate_init'     => ( $atts['animated'] && $atts['animate_init'] ),
             'animate_resize'   => ( $atts['animated'] && $atts['animate_resize'] ),
@@ -130,19 +158,16 @@ class Shortcode
 
     }
 
-        private static function _get_colors( $colors, $color ) {
-            $colors = self::_get_options_array( $colors, $color );
+        private static function _get_colors( $colors ) {
+            $colors = self::_get_options_array( $colors );
 
             $rgba = Helper::colors_to_rgba( $colors );
 
             return $rgba;
         }
 
-        private static function _get_options_array( $plural, $singular = false ) {
-            if ( $singular )
-                return array( $singular );
-
-            $options = ( !is_array( $plural ) ) ? explode( ',', $plural ) : $plural;
+        private static function _get_options_array( $array ) {
+            $options = ( !is_array( $array ) ) ? explode( ',', $array ) : $array;
             return ( is_string( $options ) ) ? array_map( 'trim', $options ) : $options;
         }
 
@@ -161,7 +186,7 @@ class Shortcode
             'post_parent'          => false,
             'post_status'          => 'publish',
             'post_type'            => 'current', // 'post',
-            'posts_per_page'       => '10',
+            'posts_per_page'       => 'grid',
             'paged'                => 1,
             'tag'                  => '',
             'tax_operator'         => 'IN',
@@ -184,7 +209,7 @@ class Shortcode
         $post_parent = $atts['post_parent']; // Validated later, after check for 'current'
         $post_status = $atts['post_status']; // Validated later as one of a few values
         $post_type =  sanitize_text_field( $atts['post_type'] );
-        $posts_per_page = intval( $atts['posts_per_page'] );
+        $posts_per_page = 'auto' == $atts['posts_per_page'] ? 'auto' : intval( $atts['posts_per_page'] );
         $tag = sanitize_text_field( $atts['tag'] );
         $tax_operator = $atts['tax_operator']; // Validated later as one of a few values
         $tax_term = sanitize_text_field( $atts['tax_term'] );
@@ -222,6 +247,10 @@ class Shortcode
             $posts_in = array_map( 'intval', explode( ',', $id ) );
 
             $args['post__in'] = $posts_in;
+
+            if ( !isset( $original_atts['post_type'] ) || !$original_atts['post_type'] ) {
+                $args['post_type'] = 'any';
+            }
 
             if ( !isset( $original_atts['orderby'] ) || !$original_atts['orderby'] ) {
                 $args['orderby'] = 'post__in';
@@ -338,6 +367,11 @@ class Shortcode
                         'operator' => 'IN'
                     );
 
+                }
+
+                // Also set the post type if not explicitly given
+                if ( !isset( $original_atts['post_type'] ) || !$original_atts['post_type'] ) {
+                    $args['post_type'] = in_the_loop() ? get_post_type() : 'any';
                 }
 
             }

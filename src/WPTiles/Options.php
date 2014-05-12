@@ -30,6 +30,9 @@ class Options
         'byline_height'   => 40,
         'byline_height_auto' => false,
 
+        'text_color'       => false,
+        'image_text_color' => false,
+
         'link'            => 'post', //post|thickbox|attachment|none
         'link_new_window' => false,
 
@@ -41,7 +44,7 @@ class Options
         'animate_resize'   => false,
         'animate_template' => true,
 
-        'image_size'       => 'medium',
+        'image_size'       => 'large',
         'image_source'     => 'all',
 
         'byline_effect' => 'none',
@@ -51,6 +54,9 @@ class Options
         'pagination'    => 'ajax',
 
         'legacy_styles' => false,
+
+        'extra_classes'               => array(),
+        'extra_classes_grid_selector' => array(),
 
         // Experimental options, only available in shortcode or PHP
         'full_width'    => false

@@ -28,7 +28,7 @@ class Admin
     }
 
     public static function is_options() {
-        return self::CONTEXT_OPTIONS === self::context;
+        return self::CONTEXT_OPTIONS === self::$context;
     }
 
     public static function setup_shortcode_generator() {
@@ -40,8 +40,8 @@ class Admin
             'modal_title'    => __( 'WP Tiles Shortcodes', 'wp-tiles' ),
             'button_title'   => __( 'WP Tiles', 'wp-tiles' ),
             'types'          => array( '*' ),
-            'main_image'     => VP_IMAGE_URL . '/vp_shortcode_icon.png',
-            'sprite_image'   => VP_IMAGE_URL . '/vp_shortcode_icon_sprite.png',
+            'main_image'     => WP_TILES_ASSETS_URL . 'images/editor-button-main.png',
+            'sprite_image'   => WP_TILES_ASSETS_URL . 'images/editor-button.png',
         );
         return new \VP_ShortcodeGenerator( $tmpl_sg );
     }
@@ -49,59 +49,43 @@ class Admin
         private static function get_shortcode_options() {
 
             $controls = array();
-            $controls[__( 'Basic Tiles', 'wp-tiles' )] = array(
+            $controls[__( 'Tiles', 'wp-tiles' )] = array(
                 'elements' => array(
                     'wp_tiles'    => array(
-                        'title' => __( '[wp-tiles] Default options', 'wp-tiles' ),
+                        'title' => __( '[wp-tiles] WP Tiles Shortcode', 'wp-tiles' ),
                         'code'  => '[wp-tiles]',
+                        'attributes' => array_merge( Controls::query_basic(), Controls::single_grid() )
                     ),
-                    'wp_tiles_last_20_posts'    => array(
-                        'title' => __( 'Last 20 Blog Posts', 'wp-tiles' ),
+                    'wp_tiles_basic_query' => array(
+                        'title' => __( 'Tiles with custom Grid options', 'wp-tiles' ),
+                        'code' => '[wp-tiles]',
+                        'attributes' => array_merge( Controls::query_basic(), Controls::grids() )
+                    ),
+                    'wp_tiles_select_posts' => array(
+                        'title' => __( 'Select Specific Posts to display', 'wp-tiles' ),
+                        'code' => '[wp-tiles]',
+                        'attributes' => array_merge( Controls::query_manual(), Controls::single_grid() )
+                    ),
+                ),
+            );
+
+            $controls[__('Presets', 'wp-tiles')] = array(
+                'elements' => array(
+                    'wp_tiles_last_20_posts' => array(
+                        'title' => __( '<em>Preset:</em> Last 20 Blog Posts', 'wp-tiles' ),
                         'code'  => "[wp-tiles post_type='post' posts_per_page=20 orderby='date' order='DESC']",
                     ),
-                    'wp_tiles_related_tag'    => array(
-                        'title' => __( 'Posts with same tags', 'wp-tiles' ),
+                    'wp_tiles_related_tag' => array(
+                        'title' => __( '<em>Preset:</em> Display posts with same tags as current post', 'wp-tiles' ),
                         'code'  => "[wp-tiles related_in_taxonomy='tag']",
                     ),
                     'wp_tiles_related_category'    => array(
-                        'title' => __( 'Posts with same categories', 'wp-tiles' ),
+                        'title' => __( '<em>Preset:</em> Display posts with same categories as current post', 'wp-tiles' ),
                         'code'  => "[wp-tiles related_in_taxonomy='category']",
                     ),
-                ),
+                )
             );
 
-            $grids = wp_tiles()->get_grids();
-            if ( !empty( $grids ) ) {
-
-                $grid_controls = array();
-                foreach( array_keys( $grids ) as $grid ) {
-
-                    $grid_controls['wp_tiles_grid_' . sanitize_key( $grid )] = array(
-                        'title' => $grid,
-                        'code' => "[wp-tiles grid='" .$grid . "']"
-                    );
-
-                }
-
-                $controls[__( 'Grids', 'wp-tiles' )] = array(
-                    'elements' => $grid_controls
-                );
-            }
-
-            $controls[__( 'Custom Tiles', 'wp-tiles' )] = array(
-                'elements' => array(
-                    'custom_layout'    => array(
-                        'title' => __( 'Custom Layout', 'wp-tiles' ),
-                        'code'  => '[wp-tiles]',
-                        'attributes' => Controls::grids()
-                    ),
-                    'custom_query'    => array(
-                        'title' => __( 'Custom Query', 'wp-tiles' ),
-                        'code'  => '[wp-tiles]',
-                        'attributes' => Controls::query()
-                    ),
-                ),
-            );
             $controls[__( 'Galleries', 'wp-tiles')] = array(
                 'elements' => array(
                     'gallery' => array(
@@ -114,12 +98,22 @@ class Admin
                         'code'  => '[gallery tiles=yes]',
                         'attributes' => Controls::gallery_select_post()
                     ),
-                    'gallery_grid' => array(
-                        'title' => __( 'Tiled Gallery with specific grid', 'wp-tiles' ),
-                        'code'  => '[gallery tiles=yes]',
-                        'attributes' => Controls::gallery_grid()
-                    )
                 )
+            );
+
+            $controls[__( 'Advanced', 'wp-tiles' )] = array(
+                'elements' => array(
+                    'custom_query'    => array(
+                        'title' => __( 'Custom Query', 'wp-tiles' ),
+                        'code'  => '[wp-tiles]',
+                        'attributes' => array_merge( Controls::query() )
+                    ),
+                    'custom_query_and_display' => array(
+                        'title' => __( 'Custom Query and Grid Options', 'wp-tiles' ),
+                        'code'  => '[wp-tiles]',
+                        'attributes' => array_merge( Controls::query(), Controls::grids() )
+                    ),
+                ),
             );
 
             return $controls;
@@ -275,33 +269,56 @@ class Admin
         );
     }
 
-    public static function preview_tile() {
-        if ( defined( 'DOING_AJAX' ) && DOING_AJAX && isset( $_POST['params'] ) && count( $_POST['params'] ) === 7 ) {
+    public static function preview_tile( $atts = array() ) {
+        if ( defined( 'DOING_AJAX' ) && DOING_AJAX && isset( $_POST['params'] ) && count( $_POST['params'] ) === 8 ) {
 
-            list( $byline_height_auto, $byline_height, $byline_color, $byline_opacity, $byline_align, $byline_effect, $image_effect ) = $_POST['params'];
+            $atts = array_combine( array(
+                'byline_height_auto',
+                'byline_height',
+                'byline_color',
+                'byline_opacity',
+                'byline_align',
+                'byline_effect',
+                'image_effect',
+                'image_text_color'
+            ), $_POST['params'] );
 
             // Sanitize!
-            $byline_height = (int) $byline_height;
+            $atts['byline_height'] = (int) $atts['byline_height'];
 
-            if ( 'random' == $byline_color || empty( $byline_color ) ) {
-                $byline_color = wp_tiles()->options->get_option( 'color_1' );
+            if ( 'random' == $atts['byline_color'] || empty( $atts['byline_color'] ) ) {
+                $atts['byline_color'] = wp_tiles()->options->get_option( 'color_1' );
             }
 
-            $byline_opacity = (float) $byline_opacity;
-            $byline_align = 'top' == $byline_align ? 'top' : 'bottom';
+            $atts['byline_opacity'] = (float) $atts['byline_opacity'];
+            $atts['byline_align'] = 'top' == $atts['byline_align'] ? 'top' : 'bottom';
+
+            $atts['id'] = 'tile-ajax-preview';
 
         } else {
-            $byline_height_auto = wp_tiles()->options->get_option( 'byline_height_auto' );
-            $byline_height  = wp_tiles()->options->get_option( 'byline_height' );
-            $byline_color   = wp_tiles()->options->get_option( 'byline_color' );
-            $byline_opacity = wp_tiles()->options->get_option( 'byline_opacity' );
-            $byline_align   = wp_tiles()->options->get_option( 'byline_align' );
-            $byline_effect  = wp_tiles()->options->get_option( 'byline_effect' );
-            $image_effect   = wp_tiles()->options->get_option( 'image_effect' );
+            $atts = shortcode_atts( array(
+                'byline_height_auto' => wp_tiles()->options->get_option( 'byline_height_auto' ),
+                'byline_height'      => wp_tiles()->options->get_option( 'byline_height' ),
+                'byline_color'       => wp_tiles()->options->get_option( 'byline_color' ),
+                'byline_opacity'     => wp_tiles()->options->get_option( 'byline_opacity' ),
+                'byline_align'       => wp_tiles()->options->get_option( 'byline_align' ),
+                'byline_effect'      => wp_tiles()->options->get_option( 'byline_effect' ),
+                'image_effect'       => wp_tiles()->options->get_option( 'image_effect' ),
+                'image_text_color'   => wp_tiles()->options->get_option( 'image_text_color' ),
+                'id'                 => 'tile-preview'
+            ), $atts );
 
         }
 
-        $byline_color = Helper::hex_to_rgba( $byline_color, $byline_opacity, true );
+        $id = $atts['id'];
+
+        $byline_height_auto = wp_tiles()->options->boolean( $atts['byline_height_auto'] );
+        $byline_height      = $atts['byline_height'];
+        $byline_color       = Helper::hex_to_rgba( $atts['byline_color'], $atts['byline_opacity'], true );
+        $byline_align       = $atts['byline_align'];
+        $byline_effect      = $atts['byline_effect'];
+        $image_effect       = $atts['image_effect'];
+        $image_text_color   = $atts['image_text_color'];
 
         /**
          * ANIMATION CLASSES
@@ -323,7 +340,7 @@ class Admin
 
         ob_start();
         ?>
-        <div class="wp-tiles-container wp-tiles-loaded wp-tiles-tile-demo">
+        <div class="wp-tiles-container wp-tiles-tile-demo wp-tiles-loaded" id="<?php echo $id ?>">
 
             <div id="wp_tiles_1" class="wp-tiles-grid <?php echo implode( ' ', $classes ); ?>">
 
@@ -354,9 +371,10 @@ class Admin
 
         </div>
         <style>
-            .wp-tiles-container.wp-tiles-tile-demo .wp-tiles-byline {
+            #<?php echo $id ?> .wp-tiles-byline {
                 background: <?php echo $byline_color ?>;
                 <?php if ( $byline_height_auto ) : ?>max-<?php endif; ?>height: <?php echo $byline_height; ?>%;
+                <?php if ( $image_text_color ) : ?>color: <?php echo $image_text_color ?>;<?php endif; ?>
             }
         </style>
         <?php

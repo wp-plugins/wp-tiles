@@ -110,38 +110,31 @@ class WPTiles extends Abstracts\WPSingleton
         $query = Legacy::get_atts_array_query( $atts_array );
         $opts  = Legacy::convert_option_array( $atts_array );
 
-        $this->display_tiles( $query, $opts );
+        return $this->display_tiles( $query, $opts );
     }
 
+    /**
+     * Echos the tiles and return true if output has been generated.
+     *
+     * @return boolean
+     */
     public function display_tiles( $posts = array(), $opts = array() ) {
-        echo $this->get_tiles( $posts, $opts );
+        if ( !$ret = $this->get_tiles( $posts, $opts ) )
+            return false;
+
+        echo $ret;
+        return true;
     }
 
     public function get_tiles( $posts = array(), $opts = array() ) {
 
-        if ( empty( $posts ) )
-            return;
+        //
+        // SETUP
+        //
 
         // This is a double-up when called from the shortcode, but makes the
         // method more reliable.
         $opts = shortcode_atts( $this->options->get_options(), $opts );
-
-        // Is $posts a query?
-        if ( is_array( $posts ) && count(array_filter(array_keys( $posts ), 'is_string') ) ) {
-
-            // Automatically set paged var if tile pagination is on
-            if ( $opts['pagination'] )
-                $posts['paged'] = ( get_query_var('paged') ) ? get_query_var('paged') : 1;
-
-            $posts = new \WP_Query( apply_filters( 'wp_tiles_get_posts_query', $posts ) );
-        }
-
-        // Is posts a WP_Query? (enables pagination)
-        $wp_query = false;
-        if ( is_a( $posts, 'WP_Query' ) ) {
-            $wp_query = $posts;
-            $posts = $wp_query->posts;
-        }
 
         /**
          * Set the variables in the instance
@@ -158,7 +151,42 @@ class WPTiles extends Abstracts\WPSingleton
         $opts['grids'] = $this->sanitize_grid_keys( $opts['grids'] );
         $grid_names = array_combine( array_keys( $opts['grids'] ), $grid_pretty_names );
 
-        $opts['small_screen_grid'] = $this->format_grid( $opts['small_screen_grid'] );
+        $small_screen_grids = $this->get_grids( $opts['small_screen_grid'] );
+        $opts['small_screen_grid'] = end( $small_screen_grids );
+
+
+        //
+        // GET POSTS
+        //
+
+        // Is $posts a query?
+        if ( is_array( $posts ) && count( array_filter( array_keys( $posts ), 'is_string') ) ) {
+
+            if ( isset( $posts['posts_per_page'] ) && 'auto' === $posts['posts_per_page'] ) {
+                $posts_in_grid = $this->get_posts_in_grid( reset( $opts['grids'] ) );
+                $posts['posts_per_page'] = ( $posts_in_grid ) ? $posts_in_grid : 10;
+            }
+
+            // Automatically set paged var if tile pagination is on
+            if ( $opts['pagination'] )
+                $posts['paged'] = ( get_query_var('paged') ) ? get_query_var('paged') : 1;
+
+            $posts = new \WP_Query( apply_filters( 'wp_tiles_get_posts_query', $posts ) );
+        }
+
+        // Is posts a WP_Query? (enables pagination)
+        $wp_query = false;
+        if ( is_a( $posts, 'WP_Query' ) ) {
+            $wp_query = $posts;
+            $posts = $wp_query->posts;
+        }
+
+        if ( empty( $posts ) )
+            return false;
+
+        //
+        // OPTIONS
+        //
 
         $opts['byline_color'] = $this->options->get_byline_color( $opts );
         $opts['colors'] = $this->options->get_colors( $opts );
@@ -167,7 +195,7 @@ class WPTiles extends Abstracts\WPSingleton
          * Make sure carousel module isn't loaded in vain
          */
         if ( 'carousel' == $opts['link']
-            && ( !doing_filter( 'post_gallery' ) ||  !class_exists( 'No_Jetpack_Carousel' ) && !class_exists( 'Jetpack_Carousel' ) ) ) {
+            && ( !class_exists( 'No_Jetpack_Carousel' ) && !class_exists( 'Jetpack_Carousel' ) ) ) {
             $opts['link'] = 'thickbox';
         }
 
@@ -216,6 +244,11 @@ class WPTiles extends Abstracts\WPSingleton
          */
         $this->add_data_for_js( $wp_tiles_id, $opts );
 
+
+        //
+        // RENDER HTML
+        //
+
         /**
          * Get the classes
          */
@@ -238,20 +271,24 @@ class WPTiles extends Abstracts\WPSingleton
         /**
          * Set extra container classes for major CSS changes
          */
-        $extra_classes = array();
+        //$opts['extra_classes'] = $opts['extra_classes_grid_selector'] = array();
 
         //Legacy styles?
         if ( apply_filters( 'wp_tiles_use_legacy_styles', $this->options->get_option( 'legacy_styles' ) ) )
-            $extra_classes[] = 'wp-tiles-legacy';
+            $opts['extra_classes'][] = $opts['extra_classes_grid_selector'][] = 'wp-tiles-legacy';
 
         // Full width experiment
         if ( $opts['full_width'] )
-            $extra_classes[] = 'wp-tiles-full-width';
+            $opts['extra_classes'][] = 'wp-tiles-full-width';
 
-        $extra_classes = implode( ' ', apply_filters( 'wp_tiles_container_classes', $extra_classes ) );
+        $opts['extra_classes'] = implode( ' ', apply_filters( 'wp_tiles_container_classes', $opts['extra_classes'] ) );
+        $opts['extra_classes_grid_selector'] = implode( ' ', apply_filters( 'wp_tiles_grid_selector_classes', $opts['extra_classes_grid_selector'] ) );
 
-        if ( !empty( $extra_classes ) )
-            $extra_classes = ' ' . $extra_classes;
+        if ( !empty( $opts['extra_classes'] ) )
+            $opts['extra_classes'] = ' ' . $opts['extra_classes'];
+
+        if ( !empty( $opts['extra_classes_grid_selector'] ) )
+            $opts['extra_classes_grid_selector'] = ' ' . $opts['extra_classes_grid_selector'];
 
         /**
          * Render the template
@@ -265,7 +302,7 @@ class WPTiles extends Abstracts\WPSingleton
         ob_start();
         if ( count( $grid_names ) > 1 ) : ?>
 
-        <div id="<?php echo $wp_tiles_id; ?>-templates" class="wp-tiles-templates<?php echo $extra_classes ?>">
+        <div id="<?php echo $wp_tiles_id; ?>-templates" class="wp-tiles-templates<?php echo $opts['extra_classes_grid_selector'] ?>">
 
             <ul class="wp-tiles-template-selector">
             <?php foreach ( $grid_names as $slug => $name ) : ?>
@@ -278,7 +315,7 @@ class WPTiles extends Abstracts\WPSingleton
         </div>
         <?php endif; ?>
 
-        <div class="wp-tiles-container<?php echo $extra_classes ?>">
+        <div class="wp-tiles-container<?php echo $opts['extra_classes'] ?>">
         <?php if ( 'carousel' == $opts['link'] ):?>
 
             <?php echo apply_filters( 'gallery_style', '<div id="' . $wp_tiles_id . '" class="wp-tiles-grid gallery ' . implode( ' ', $classes ) . '">' ); ?>
@@ -362,16 +399,16 @@ class WPTiles extends Abstracts\WPSingleton
                 <div class='<?php echo implode( ' ', $tile_classes ) ?>' id='tile-<?php echo $post->ID ?>'>
                 <?php if ( 'post' == $opts['link'] ) : ?>
 
-                    <a href="<?php echo get_permalink( $post->ID ) ?>" title="<?php echo apply_filters( 'the_title', $post->post_title ) ?>"<?php echo $link_attributes_string ?>>
+                    <a href="<?php echo get_permalink( $post->ID ) ?>" title="<?php echo esc_attr( apply_filters( 'the_title', $post->post_title, $post->ID ) ) ?>"<?php echo $link_attributes_string ?>>
                 <?php elseif ( 'file' == $opts['link'] ) : ?>
 
-                    <a href="<?php echo $this->get_first_image( $post, 'full' ) ?>" title="<?php echo apply_filters( 'the_title', $post->post_title ) ?>"<?php echo $link_attributes_string ?>>
+                    <a href="<?php echo $this->get_first_image( $post, 'full' ) ?>" title="<?php echo esc_attr( apply_filters( 'the_title', $post->post_title, $post->ID ) ) ?>"<?php echo $link_attributes_string ?>>
                 <?php elseif ( 'thickbox' == $opts['link'] ) : ?>
 
-                    <a href="<?php echo $this->get_first_image( $post, 'full' ) ?>" title="<?php echo strip_tags( $byline ) ?>" class="thickbox" rel="<?php echo $this->tiles_id ?>"<?php echo $link_attributes_string ?>>
+                    <a href="<?php echo $this->get_first_image( $post, 'full' ) ?>" title="<?php echo esc_attr( strip_tags( $byline ) ) ?>" class="thickbox" rel="<?php echo $this->tiles_id ?>"<?php echo $link_attributes_string ?>>
                 <?php elseif ( 'carousel' == $opts['link'] ) : ?>
 
-                    <a href="<?php echo $this->get_first_image( $post, 'full' ) ?>" title="<?php echo strip_tags( $byline ) ?>"<?php echo Gallery::get_carousel_image_attr( $post ) ?>>
+                    <a href="<?php echo $this->get_first_image( $post, 'full' ) ?>" title="<?php echo esc_attr( strip_tags( $byline ) ) ?>"<?php echo Gallery::get_carousel_image_attr( $post ) ?>>
                 <?php endif; ?>
 
                         <article class='<?php echo $tile_class ?> wp-tiles-tile-wrapper' itemscope itemtype="http://schema.org/CreativeWork">
@@ -390,7 +427,7 @@ class WPTiles extends Abstracts\WPSingleton
                                 <div class='wp-tiles-byline-wrapper'>
                                 <?php if ( !$opts['hide_title'] ) : ?>
 
-                                    <h4 itemprop="name" class="wp-tiles-byline-title"><?php echo apply_filters( 'the_title', $post->post_title ) ?></h4>
+                                    <h4 itemprop="name" class="wp-tiles-byline-title"><?php echo apply_filters( 'the_title', $post->post_title, $post->ID ) ?></h4>
                                 <?php endif; ?>
                                 <?php if ( $byline ) : ?>
 
@@ -421,7 +458,7 @@ class WPTiles extends Abstracts\WPSingleton
         $template = apply_filters( 'wp_tiles_byline_template_post', $template, $post );
 
         $tags = array(
-            '%title%'   => apply_filters( 'the_title', $post->post_title ),
+            '%title%'   => apply_filters( 'the_title', $post->post_title, $post->ID ),
             '%content%' => apply_filters( 'the_content', strip_shortcodes( $post->post_content ) ),
             '%excerpt%' => $this->get_the_excerpt( $post ),
             '%date%'    => $this->get_the_date( $post ),
@@ -460,7 +497,7 @@ class WPTiles extends Abstracts\WPSingleton
         // Tax list: %tax:TAXONOMY%
         // Tax list with links: %tax_links:TAXONOMY%
         $matches = array();
-        if ( preg_match_all( '/%([a-z_]+):([A-Za-z0-9_-]+)%/', $template, $matches, PREG_SET_ORDER ) ) {
+        if ( preg_match_all( '/%([a-z_-]+):([^%]+)%/', $template, $matches, PREG_SET_ORDER ) ) {
 
             foreach( $matches as $match ) {
                 if ( 'meta' === $match[1]) {
@@ -477,6 +514,11 @@ class WPTiles extends Abstracts\WPSingleton
                         $tags["%tax_links:$match[2]%"] = get_the_term_list( $post->ID, $taxonomy, '', ', ', '' );
 
                     }
+
+                } else {
+                    $tag = apply_filters( 'wp_tiles_byline_tags_dynamic', false, $match[1], $match[2], $post, $template );
+                    if ( false !== $tag )
+                        $tags["%{$match[1]}:{$match[2]}%"] = $tag;
 
                 }
             }
@@ -514,7 +556,8 @@ class WPTiles extends Abstracts\WPSingleton
             'id', 'grids', 'breakpoint', 'small_screen_grid', 'padding',
             'byline_color', 'byline_height', 'colors', 'byline_opacity',
             'next_query', 'ajaxurl', 'animate_template', 'animate_init',
-            'animate_resize', 'grid_selector_color', 'link_new_window'
+            'animate_resize', 'grid_selector_color', 'image_text_color',
+            'text_color', 'link_new_window'
         );
 
         foreach( $js_opts as &$opt ) {
@@ -530,7 +573,7 @@ class WPTiles extends Abstracts\WPSingleton
 
     public function register_scripts() {
 
-        $script_path = WP_TILES_ASSETS_URL . '/js/';
+        $script_path = WP_TILES_ASSETS_URL . 'js/';
         $in_footer   = apply_filters( 'wp_tiles_js_in_footer', true );
 
         if ( defined( 'SCRIPT_DEBUG' ) && SCRIPT_DEBUG ) {
@@ -548,7 +591,7 @@ class WPTiles extends Abstracts\WPSingleton
 
     public function register_styles() {
 
-        $stylesheet = WP_TILES_ASSETS_URL . '/css/wp-tiles.css';
+        $stylesheet = WP_TILES_ASSETS_URL . 'css/wp-tiles.css';
 
         // In admin we want vanilla WP Tiles styles
         if ( !is_admin() ) {
@@ -622,8 +665,14 @@ class WPTiles extends Abstracts\WPSingleton
      * Plugins can hijack this method by hooking into 'pre_wp_tiles_image'.
      * @param WP_Post $post
      * @return string Image url
+     *
+     * @todo Statically caches found images in object to prevent double lookups,
+     *        Maybe we should store this in object cache? The problem is that we
+     *        can't invalidate the cache reliably..
      */
     public function get_first_image( $post, $size = false ) {
+        static $found = array();
+
         $allowed_sizes = get_intermediate_image_sizes();
         $allowed_sizes[] = 'full';
 
@@ -642,7 +691,13 @@ class WPTiles extends Abstracts\WPSingleton
         if ( false !== $src )
             return $src;
 
-        return $this->_find_the_image( $post, $size );
+        if ( !isset( $found[$post->ID] ) )
+            $found[$post->ID] = array();
+
+        if ( !isset( $found[$post->ID][$size] ) )
+            $found[$post->ID][$size] = $this->_find_the_image( $post, $size );
+
+        return $found[$post->ID][$size];
     }
 
         /**
@@ -656,6 +711,9 @@ class WPTiles extends Abstracts\WPSingleton
          * @sice 0.5.2
          */
         private function _find_the_image( $post, $size ) {
+            if ( isset( $post->image_url ) && $post->image_url )
+                return $post->image_url;
+
             $image_source = $this->options->get_option( 'image_source' );
 
             if ( 'attachment' === get_post_type( $post->ID ) ) {
@@ -702,7 +760,7 @@ class WPTiles extends Abstracts\WPSingleton
         // Check if this is already a grid
         // Happens when default is passed through the shortcode
         if ( is_array( $query ) && is_array( reset( $query ) ) )
-            return $query;
+                return $query;
 
         $posts = $this->_get_grid_posts( $query );
 
@@ -822,11 +880,57 @@ class WPTiles extends Abstracts\WPSingleton
      */
     public function format_grid( $grid ) {
         if ( !is_array( $grid ) )
-            $grid = explode( "\n", $grid );
+            $grid = explode( "\n", str_replace( "|", "\n", $grid ) );
 
         $grid = array_map( 'trim', $grid );
 
         return $grid;
+    }
+
+    public function get_default_grid_title() {
+        if ( $default_grid = $this->options->get_option( 'default_grid' ) ) {
+            $title = get_the_title( $this->options->get_option( 'default_grid' ) );
+            if ( $title )
+                return $title;
+        }
+
+        $grids = $this->get_grids();
+        if ( empty( $grids ) ) {
+            return '';
+        }
+
+        $names = array_keys( $grids );
+        return reset( $names );
+    }
+
+    public function get_posts_in_grid( $grid ) {
+        $last_row = false;
+        $letters = array();
+
+        foreach( $grid as $line ) {
+            $matches = array();
+            preg_match_all("/[^ ]/", $line, $matches );
+            $line = reset( $matches );
+
+            foreach( $line as $index => $letter ) {
+                // Letter has occurred
+                if ( '.' !== $letter && in_array( $letter, $letters ) ) {
+
+                    $is_adjacent = $index !== 0 && $line[$index-1] === $letter;
+                    $is_beneath  = $last_row && $last_row[$index] === $letter;
+
+                    if ( !$is_adjacent && !$is_beneath )
+                        $letters[] = $letter;
+
+                } else {
+                    $letters[] = $letter;
+                }
+            }
+
+            $last_row = $line;
+        }
+
+        return count( $letters );
     }
 
     public static function on_plugin_activation() {
