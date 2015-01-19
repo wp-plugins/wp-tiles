@@ -175,9 +175,9 @@ class WPTiles extends Abstracts\WPSingleton
             $posts = new \WP_Query( apply_filters( 'wp_tiles_get_posts_query', $posts ) );
         }
 
-        // Is posts a WP_Query? (enables pagination)
+        // Is posts a WP_Query or Network_Query or similar? (enables pagination)
         $wp_query = false;
-        if ( is_a( $posts, 'WP_Query' ) ) {
+        if ( is_object( $posts ) && isset( $posts->posts ) && isset( $posts->max_num_pages ) ) {
             $wp_query = $posts;
             $posts = $wp_query->posts;
         }
@@ -413,7 +413,7 @@ class WPTiles extends Abstracts\WPSingleton
                     <a href="<?php echo $this->get_first_image( $post, 'full' ) ?>" title="<?php echo esc_attr( apply_filters( 'the_title', $post->post_title, $post->ID ) ) ?>"<?php echo $link_attributes_string ?>>
                 <?php elseif ( 'thickbox' == $opts['link'] ) : ?>
 
-                    <a href="<?php echo $this->get_first_image( $post, 'full' ) ?>" title="<?php echo esc_attr( strip_tags( $byline ) ) ?>" class="thickbox" rel="<?php echo $this->tiles_id ?>"<?php echo $link_attributes_string ?>>
+                    <a href="<?php echo $this->get_first_image( $post, 'full' ) ?>" title="<?php echo esc_attr( strip_tags( $byline ) ) ?>" class="<?php echo esc_attr( apply_filters( 'wp_tiles_thickbox_class', 'thickbox' ) ) ?>" rel="<?php echo $this->tiles_id ?>"<?php echo $link_attributes_string ?>>
                 <?php elseif ( 'carousel' == $opts['link'] ) : ?>
 
                     <a href="<?php echo $this->get_first_image( $post, 'full' ) ?>" title="<?php echo esc_attr( strip_tags( $byline ) ) ?>"<?php echo Gallery::get_carousel_image_attr( $post ) ?>>
@@ -481,6 +481,10 @@ class WPTiles extends Abstracts\WPSingleton
         // Only do the more expensive tags if needed
         if ( strpos( $template, '%featured_image%' ) !== false ) {
             $tags['%featured_image%'] = get_the_post_thumbnail( $post->ID );
+        }
+
+        if ( strpos( $template, '%featured_image_src%' ) !== false ) {
+            $tags['%featured_image_src%'] = $this->get_first_image( $post, 'full' );
         }
 
         if ( strpos( $template, '%author%' ) !== false ) {

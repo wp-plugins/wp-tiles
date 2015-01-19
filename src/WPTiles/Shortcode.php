@@ -89,11 +89,7 @@ class Shortcode
         }
 
         // Maybe convert full grid strings into grids so they are not interpreted as names
-        $is_grid_string = function( $string ) {
-            return is_string( $string ) && ( strpos( $string, '|' ) !== false || strpos( $string, "\n" ) !== false );
-        };
-
-        if ( $atts['small_screen_grid'] && $is_grid_string( $atts['small_screen_grid'] ) ) {
+        if ( $atts['small_screen_grid'] && self::_is_grid_string( $atts['small_screen_grid'] ) ) {
             $atts['small_screen_grid'] = array(
                 'Custom' => wp_tiles()->format_grid( $atts['small_screen_grid'] )
             );
@@ -160,6 +156,10 @@ class Shortcode
 
     }
 
+        private static function _is_grid_string( $string ) {
+            return is_string( $string ) && ( strpos( $string, '|' ) !== false || strpos( $string, "\n" ) !== false );
+        }
+
         private static function _get_colors( $colors ) {
             $colors = self::_get_options_array( $colors );
 
@@ -180,6 +180,7 @@ class Shortcode
             'author'               => '',
             'category'             => '',
             'id'                   => false,
+            'exclude'              => false,
             'ignore_sticky_posts'  => false,
             'meta_key'             => '',
             'offset'               => 0,
@@ -188,7 +189,7 @@ class Shortcode
             'post_parent'          => false,
             'post_status'          => 'publish',
             'post_type'            => 'current', // 'post',
-            'posts_per_page'       => 'grid',
+            'posts_per_page'       => 'auto',
             'paged'                => 1,
             'tag'                  => '',
             'tax_operator'         => 'IN',
@@ -202,7 +203,8 @@ class Shortcode
 
         $author = sanitize_text_field( $atts['author'] );
         $category = sanitize_text_field( $atts['category'] );
-        $id = $atts['id']; // Sanitized later as an array of integers
+        $id      = $atts['id']; // Sanitized later as an array of integers
+        $exclude = $atts['exclude']; // Sanitized later as an array of integers
         $ignore_sticky_posts = (bool) $atts['ignore_sticky_posts'];
         $meta_key = sanitize_text_field( $atts['meta_key'] );
         $offset = intval( $atts['offset'] );
@@ -246,9 +248,15 @@ class Shortcode
 
         // If Post IDs
         if( $id ) {
-            $posts_in = array_map( 'intval', explode( ',', $id ) );
+            $post_in = array_map( 'intval', explode( ',', $id ) );
 
-            $args['post__in'] = $posts_in;
+            // Exclude wins from include
+            if ( $exclude ) {
+                $post_not_in = array_map( 'intval', explode( ',', $exclude ) );
+                $post_in = array_diff( $post_in, $post_not_in );
+            }
+
+            $args['post__in'] = $post_in;
 
             if ( !isset( $original_atts['post_type'] ) || !$original_atts['post_type'] ) {
                 $args['post_type'] = 'any';
@@ -257,7 +265,13 @@ class Shortcode
             if ( !isset( $original_atts['orderby'] ) || !$original_atts['orderby'] ) {
                 $args['orderby'] = 'post__in';
             }
+
+        // Only process exclude if there is no include
+        } elseif ( $exclude ) {
+            $args['post__not_in'] = array_map( 'intval', explode( ',', $exclude ) );
+
         }
+
 
         // Post Author
         if( !empty( $author ) )
@@ -342,7 +356,11 @@ class Shortcode
             // Only exclude if post IDs are not explicitly given
             // (post__not_in and post__in at the same time is not supported by WP_Query)
             if ( $atts['exclude_current_post'] && !$id ) {
-                $args['post__not_in'] = array( get_the_ID() );
+
+                if ( !isset( $args['post__not_in'] ) || !is_array( $args['post__not_in'] ) )
+                    $args['post__not_in'] = array();
+
+                $args['post__not_in'][] = get_the_ID();
             }
 
             if ( !empty( $atts['related_in_taxonomy'] ) ) {
