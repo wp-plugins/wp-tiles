@@ -634,7 +634,7 @@ class WPTiles extends Abstracts\WPSingleton
          * @since 1.0
          * @param bool Always enqueue
          */
-        if ( !is_admin() && apply_filters( 'wp_tiles_always_enqueue_stylesheet', true ) ) {
+        if ( !is_admin() && apply_filters( 'wp_tiles_always_enqueue_stylesheet', false ) ) {
             $this->enqueue_styles();
         }
     }
@@ -777,9 +777,11 @@ class WPTiles extends Abstracts\WPSingleton
                 return '';
 
             if ( !empty( $post->post_content ) ) {
-                $xpath = new \DOMXPath( @\DOMDocument::loadHTML( $post->post_content ) );
-                $src   = $xpath->evaluate( "string(//img/@src)" );
-                return $src;
+                if ( class_exists( 'DOMXPath' ) && class_exists( 'DOMDocument' ) ) {
+                    $xpath = new \DOMXPath( @\DOMDocument::loadHTML( $post->post_content ) );
+                    $src   = $xpath->evaluate( "string(//img/@src)" );
+                    return $src;
+                }
             }
             return '';
         }
@@ -963,11 +965,8 @@ class WPTiles extends Abstracts\WPSingleton
     }
 
     public static function on_plugin_activation() {
-        set_transient( 'wp_tiles_first_run', true );
+        wp_tiles()->register_post_type();
+        Admin\GridTemplates::install_default_templates();
     }
 
-    public static function on_first_run() {
-        Admin\GridTemplates::install_default_templates();
-        delete_transient( 'wp_tiles_first_run' );
-    }
 }
